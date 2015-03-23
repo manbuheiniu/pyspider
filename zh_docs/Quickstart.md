@@ -1,21 +1,20 @@
-Quickstart
+快速入门
 ==========
 
-Installation
+安装pyspider
 ------------
 
-* `pip install pyspider`
-* run command `pyspider`, visit [http://localhost:5000/](http://localhost:5000/)
+* 在LINUX终端里执行`pip install pyspider`安装pyspider。
+* 安装完执行命令 `pyspider`启动, 访问 [http://localhost:5000/](http://localhost:5000/)查看是否启动成功。
 
-if you are using ubuntu, try:
+如果您使用的是UBUNTU操作系统，在安装pyspider前需要执行以下命令安装依赖包:
 ```
 apt-get install python python-dev python-distribute python-pip libcurl4-openssl-dev libxml2-dev libxslt1-dev python-lxml
 ```
-to install binary packages first.
 
-**Note:** `pyspider` command is running pyspider in `all` mode, which running components in threads or subprocesses. For production environment, please refer to [Deployment](Deployment).
+**注意:** `pyspider` 命令是启动pyspider的默认模式，默认模式是所有的组件都以本地模式执行并且所有组件都启动。如果想线上运行或调试请参考部署章节 [Deployment](部署).
 
-Your First Script
+你的第一个爬虫脚本
 -----------------
 
 ```python
@@ -43,30 +42,30 @@ class Handler(BaseHandler):
         }
 ```
 
-> * `def on_start(self)` is the entry point of the script. It will be called when you click the `run` button on dashboard.
-> * [`self.crawl(url, callback=self.index_page)`*](/apis/self.crawl) is the most important API here. It will add a new task to be crawled.
-> * `def index_page(self, response)` get a [`Response`*](/apis/Response) object. [`response.doc`*](/apis/Response/#responsedoc) is a [pyquery](https://pythonhosted.org/pyquery/) object which has jQuery-like API to select elements to be extracted.
-> * `def detail_page(self, response)` return a `dict` object as result. The result will be captured into `resultdb` by default. You can override `on_result(self, result)` method to manage the result yourself.
+> * `def on_start(self)` 是脚本的入口. 当你在控制台点击 `run` 时程序会执行此处。
+> * [`self.crawl(url, callback=self.index_page)`*](/apis/self.crawl) 调用爬虫的一个非常重要的api接口. 调用这个接口会添加一个新的爬取任务。
+> * `def index_page(self, response)` 传入一个 [`Response`*](/apis/Response) 对像. [`response.doc`*](/apis/Response/#responsedoc) 是一个 [pyquery](https://pythonhosted.org/pyquery/) 对像并且可以使用扩展API选择元素。
+> * `def detail_page(self, response)` 返回一个 `dict` 对象做为结果. 这个结果默认会保存到`resultdb`数据库. 你可以重写 `on_result(self, result)` 方法输出到其它数据库或是api。
 
 
-More things you may want to know:
+你可能需要知道更多的相关知识:
 
-> * [`@every(minutes=24*60, seconds=0)`*](/apis/@every/) is a helper to tell the scheduler that `on_start` method should be called everyday.
-> * [`@config(age=10 * 24 * 60 * 60)`*](/apis/self.crawl/#configkwargs) tell scheduler discard the request if it have been crawled in 10 days. The parameter [`age`*](/apis/self.crawl/#schedule) can also be specified via `self.crawl(url, age=10*24*60*60)` and `crawl_config`
-> * [`@config(priority=2)`*](/apis/self.crawl/#schedule) mark that detail pages should be crawled first.
+> * [`@every(minutes=24*60, seconds=0)`*](/apis/@every/) 这个配置是告诉schedule（也就是调度器）多长时间执行一次 `on_start` 方法。
+> * [`@config(age=10 * 24 * 60 * 60)`*](/apis/self.crawl/#configkwargs) 这个配置是告诉scheduler（调度器）在多长时间（单位是秒）内不再执行这个任务。[`age`*](/apis/self.crawl/#schedule)参数也可以用于 `self.crawl(url, age=10*24*60*60)` 和 `crawl_config`。
+> * [`@config(priority=2)`*](/apis/self.crawl/#schedule) 这个priority参数可以改变任务的优先级。本案例中是提高详情页的优先级。
 
-You can test your script step by step by click the green `run` button. Switch to `follows` panel, click the play button to move on.
+你可以点击`run`按钮来单步运行并测试你的脚本，并切换到`follows`面板点击播放按钮继续单步执行。
 
 ![run one step](imgs/run_one_step.png)
 
-Start Running
+启动爬虫
 -------------
 
-1. Save your script.
-2. Back to dashboard find your project.
-3. Changing the `status` to `DEBUG` or `RUNNING`.
-4. Click the `run` button.
+1. 保存你编写的脚本。
+2. 返回到控制台并找到你刚编辑的项目。
+3. 修改任务状态为 `DEBUG` or `RUNNING`（直接点击项目的状态可修改状态）。
+4. 点击`run`按钮启动爬虫开始抓取。
 
 ![index demo](imgs/index_page.png)
 
-Your script is running now!
+如果你按上面的步骤操作完了，那么恭喜你，你的爬虫已经开始工作了。
