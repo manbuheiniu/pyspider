@@ -5,8 +5,12 @@
 #         http://binux.me
 # Created on 2012-08-30 17:43:49
 
+from __future__ import unicode_literals, division, absolute_import
+
 import logging
 logger = logging.getLogger('database.basedb')
+
+from six import itervalues
 
 
 class BaseDB:
@@ -16,6 +20,7 @@ class BaseDB:
 
     dbcur should be overwirte
     '''
+    __tablename__ = None
     placeholder = '%s'
 
     @staticmethod
@@ -47,7 +52,7 @@ class BaseDB:
             yield row
 
     def _select2dic(self, tablename=None, what="*", where="", where_values=[],
-                    offset=0, limit=None):
+                    order=None, offset=0, limit=None):
         tablename = self.escape(tablename or self.__tablename__)
         if isinstance(what, list) or isinstance(what, tuple) or what is None:
             what = ','.join(self.escape(f) for f in what) if what else '*'
@@ -55,6 +60,8 @@ class BaseDB:
         sql_query = "SELECT %s FROM %s" % (what, tablename)
         if where:
             sql_query += " WHERE %s" % where
+        if order:
+            sql_query += ' ORDER BY %s' % order
         if limit:
             sql_query += " LIMIT %d, %d" % (offset, limit)
         logger.debug("<sql: %s>", sql_query)
@@ -68,7 +75,7 @@ class BaseDB:
     def _replace(self, tablename=None, **values):
         tablename = self.escape(tablename or self.__tablename__)
         if values:
-            _keys = ", ".join(self.escape(k) for k in values.iterkeys())
+            _keys = ", ".join(self.escape(k) for k in values)
             _values = ", ".join([self.placeholder, ] * len(values))
             sql_query = "REPLACE INTO %s (%s) VALUES (%s)" % (tablename, _keys, _values)
         else:
@@ -76,7 +83,7 @@ class BaseDB:
         logger.debug("<sql: %s>", sql_query)
 
         if values:
-            dbcur = self._execute(sql_query, values.values())
+            dbcur = self._execute(sql_query, list(itervalues(values)))
         else:
             dbcur = self._execute(sql_query)
         return dbcur.lastrowid
@@ -84,7 +91,7 @@ class BaseDB:
     def _insert(self, tablename=None, **values):
         tablename = self.escape(tablename or self.__tablename__)
         if values:
-            _keys = ", ".join((self.escape(k) for k in values.iterkeys()))
+            _keys = ", ".join((self.escape(k) for k in values))
             _values = ", ".join([self.placeholder, ] * len(values))
             sql_query = "INSERT INTO %s (%s) VALUES (%s)" % (tablename, _keys, _values)
         else:
@@ -92,7 +99,7 @@ class BaseDB:
         logger.debug("<sql: %s>", sql_query)
 
         if values:
-            dbcur = self._execute(sql_query, values.values())
+            dbcur = self._execute(sql_query, list(itervalues(values)))
         else:
             dbcur = self._execute(sql_query)
         return dbcur.lastrowid
@@ -100,12 +107,12 @@ class BaseDB:
     def _update(self, tablename=None, where="1=0", where_values=[], **values):
         tablename = self.escape(tablename or self.__tablename__)
         _key_values = ", ".join([
-            "%s = %s" % (self.escape(k), self.placeholder) for k in values.iterkeys()
+            "%s = %s" % (self.escape(k), self.placeholder) for k in values
         ])
         sql_query = "UPDATE %s SET %s WHERE %s" % (tablename, _key_values, where)
         logger.debug("<sql: %s>", sql_query)
 
-        return self._execute(sql_query, values.values() + list(where_values))
+        return self._execute(sql_query, list(itervalues(values)) + list(where_values))
 
     def _delete(self, tablename=None, where="1=0", where_values=[]):
         tablename = self.escape(tablename or self.__tablename__)

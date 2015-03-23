@@ -6,13 +6,15 @@
 # Created on 2014-10-13 22:02:57
 
 import re
+import six
 import time
 import json
 import mysql.connector
 
+from pyspider.libs import utils
 from pyspider.database.base.resultdb import ResultDB as BaseResultDB
 from pyspider.database.basedb import BaseDB
-from mysqlbase import MySQLMixin, SplitTableMixin
+from .mysqlbase import MySQLMixin, SplitTableMixin
 
 
 class ResultDB(MySQLMixin, SplitTableMixin, BaseResultDB, BaseDB):
@@ -36,14 +38,15 @@ class ResultDB(MySQLMixin, SplitTableMixin, BaseResultDB, BaseDB):
         self._execute('''CREATE TABLE %s (
             `taskid` varchar(64) PRIMARY KEY,
             `url` varchar(1024),
-            `result` BLOB,
+            `result` MEDIUMBLOB,
             `updatetime` double(16, 4)
-            ) ENGINE=MyISAM CHARSET=utf8''' % self.escape(tablename))
+            ) ENGINE=InnoDB CHARSET=utf8''' % self.escape(tablename))
 
     def _parse(self, data):
+        for key, value in list(six.iteritems(data)):
+            if isinstance(value, (bytearray, six.binary_type)):
+                data[key] = utils.text(value)
         if 'result' in data:
-            if isinstance(data['result'], bytearray):
-                data['result'] = str(data['result'])
             data['result'] = json.loads(data['result'])
         return data
 
@@ -72,7 +75,8 @@ class ResultDB(MySQLMixin, SplitTableMixin, BaseResultDB, BaseDB):
             return
         tablename = self._tablename(project)
 
-        for task in self._select2dic(tablename, what=fields, offset=offset, limit=limit):
+        for task in self._select2dic(tablename, what=fields, order='updatetime DESC',
+                                     offset=offset, limit=limit):
             yield self._parse(task)
 
     def count(self, project):

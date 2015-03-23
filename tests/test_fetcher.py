@@ -6,18 +6,24 @@
 # Created on 2014-02-15 22:10:35
 
 import os
+import json
 import copy
 import time
 import umsgpack
-import xmlrpclib
 import subprocess
 import unittest2 as unittest
 from multiprocessing import Queue
+
 import logging
 import logging.config
 logging.config.fileConfig("pyspider/logging.conf")
 
+try:
+    from six.moves import xmlrpc_client
+except ImportError:
+    import xmlrpclib as xmlrpc_client
 from pyspider.libs import utils
+from pyspider.libs.response import rebuild_response
 from pyspider.fetcher.tornado_fetcher import Fetcher
 
 
@@ -25,7 +31,7 @@ class TestFetcher(unittest.TestCase):
     sample_task_http = {
         'taskid': 'taskid',
         'project': 'project',
-        'url': 'http://echo.opera.com/',
+        'url': '',
         'fetch': {
             'method': 'GET',
             'headers': {
@@ -46,13 +52,23 @@ class TestFetcher(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
+        import tests.data_test_webpage
+        import httpbin
+
+        self.httpbin_thread = utils.run_in_subprocess(httpbin.app.run, port=14887)
+        self.httpbin = 'http://127.0.0.1:14887'
+
         self.inqueue = Queue(10)
         self.outqueue = Queue(10)
         self.fetcher = Fetcher(self.inqueue, self.outqueue)
-        self.fetcher.phantomjs_proxy = 'localhost:25555'
-        self.rpc = xmlrpclib.ServerProxy('http://localhost:%d' % 24444)
+        self.fetcher.phantomjs_proxy = '127.0.0.1:25555'
+        self.rpc = xmlrpc_client.ServerProxy('http://localhost:%d' % 24444)
         self.xmlrpc_thread = utils.run_in_thread(self.fetcher.xmlrpc_run, port=24444)
         self.thread = utils.run_in_thread(self.fetcher.run)
+        self.proxy_thread = subprocess.Popen(['pyproxy', '--username=binux',
+                                              '--password=123456', '--port=14830',
+                                              '--debug'], close_fds=True)
+        self.proxy = '127.0.0.1:14830'
         try:
             self.phantomjs = subprocess.Popen(['phantomjs',
                 os.path.join(os.path.dirname(__file__),
@@ -60,9 +76,15 @@ class TestFetcher(unittest.TestCase):
                 '25555'])
         except OSError:
             self.phantomjs = None
+        time.sleep(0.5)
 
     @classmethod
     def tearDownClass(self):
+        self.proxy_thread.terminate()
+        self.proxy_thread.wait()
+        self.httpbin_thread.terminate()
+        self.httpbin_thread.join()
+
         if self.phantomjs:
             self.phantomjs.kill()
             self.phantomjs.wait()
@@ -71,118 +93,149 @@ class TestFetcher(unittest.TestCase):
         time.sleep(1)
 
     def test_10_http_get(self):
-        result = self.fetcher.sync_fetch(self.sample_task_http)
-        self.assertEqual(result['status_code'], 200)
-        self.assertEqual(result['orig_url'], self.sample_task_http['url'])
-        self.assertEqual(result['save'], self.sample_task_http['fetch']['save'])
-        self.assertIn('content', result)
-
-        content = result['content']
-        self.assertIn('<b>A:', content)
-        self.assertIn('<b>Cookie:</b>', content)
-        self.assertIn('c=d</td>', content)
-
-    def test_10_http_post(self):
         request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/get'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, result)
+        self.assertEqual(response.orig_url, request['url'])
+        self.assertEqual(response.save, request['fetch']['save'])
+        self.assertIsNotNone(response.json, response.content)
+        self.assertEqual(response.json['headers'].get('A'), 'b', response.json)
+        self.assertIn('c=d', response.json['headers'].get('Cookie'), response.json)
+        self.assertIn('a=b', response.json['headers'].get('Cookie'), response.json)
+
+    def test_15_http_post(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/post'
         request['fetch']['method'] = 'POST'
         request['fetch']['data'] = 'binux'
         request['fetch']['cookies'] = {'c': 'd'}
         result = self.fetcher.sync_fetch(request)
-        self.assertEqual(result['status_code'], 200)
-        self.assertEqual(result['orig_url'], self.sample_task_http['url'])
-        self.assertEqual(result['save'], self.sample_task_http['fetch']['save'])
-        self.assertIn('content', result)
+        response = rebuild_response(result)
 
-        content = result['content']
-        self.assertIn('<h2>POST', content)
-        self.assertIn('..A:', content)
-        self.assertIn('..Cookie:', content)
-        # FIXME: cookies in headers not supported
-        self.assertNotIn('a=b', content)
-        self.assertIn('c=d', content)
-        self.assertIn('binux', content)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.orig_url, request['url'])
+        self.assertEqual(response.save, request['fetch']['save'])
+        self.assertIsNotNone(response.json, response.content)
+
+        self.assertEqual(response.json['form'].get('binux'), '')
+        self.assertEqual(response.json['headers'].get('A'), 'b', response.json)
+        self.assertIn('c=d', response.json['headers'].get('Cookie'), response.json)
+        self.assertIn('a=b', response.json['headers'].get('Cookie'), response.json)
 
     def test_20_dataurl_get(self):
-        data = copy.deepcopy(self.sample_task_http)
-        data['url'] = 'data:,hello'
-        result = self.fetcher.sync_fetch(data)
-        self.assertEqual(result['status_code'], 200)
-        self.assertIn('content', result)
-        self.assertEqual(result['content'], 'hello')
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = 'data:,hello'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, 'hello')
 
     def test_30_with_queue(self):
-        data = copy.deepcopy(self.sample_task_http)
-        data['url'] = 'data:,hello'
-        self.inqueue.put(data)
+        request= copy.deepcopy(self.sample_task_http)
+        request['url'] = 'data:,hello'
+        self.inqueue.put(request)
         task, result = self.outqueue.get()
-        self.assertEqual(result['status_code'], 200)
-        self.assertIn('content', result)
-        self.assertEqual(result['content'], 'hello')
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, 'hello')
 
     def test_40_with_rpc(self):
-        data = copy.deepcopy(self.sample_task_http)
-        data['url'] = 'data:,hello'
-        result = umsgpack.unpackb(self.rpc.fetch(data).data)
-        self.assertEqual(result['status_code'], 200)
-        self.assertIn('content', result)
-        self.assertEqual(result['content'], 'hello')
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = 'data:,hello'
+        result = umsgpack.unpackb(self.rpc.fetch(request).data)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, 'hello')
 
     def test_50_base64_data(self):
         request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/post'
         request['fetch']['method'] = 'POST'
+        # utf8 encoding 中文
+        request['fetch']['data'] = "[BASE64-DATA]5Lit5paH[/BASE64-DATA]"
+        self.inqueue.put(request)
+        task, result = self.outqueue.get()
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, response.error)
+        self.assertIsNotNone(response.json, response.content)
+        self.assertIn(u'中文', response.json['form'], response.json)
+
+    def test_55_base64_data(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/post'
+        request['fetch']['method'] = 'POST'
+        # gbk encoding 中文
         request['fetch']['data'] = "[BASE64-DATA]1tDOxA==[/BASE64-DATA]"
         self.inqueue.put(request)
         task, result = self.outqueue.get()
-        self.assertEqual(result['status_code'], 200)
-        self.assertIn(' d6 ', result['content'])
-        self.assertIn(' d0 ', result['content'])
-        self.assertIn(' ce ', result['content'])
-        self.assertIn(' c4 ', result['content'])
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, response.error)
+        self.assertIsNotNone(response.json, response.content)
 
     def test_60_timeout(self):
         request = copy.deepcopy(self.sample_task_http)
-        request['url'] = 'http://httpbin.org/delay/10'
+        request['url'] = self.httpbin+'/delay/5'
         request['fetch']['timeout'] = 3
         start_time = time.time()
         self.inqueue.put(request)
         task, result = self.outqueue.get()
         end_time = time.time()
-        self.assertGreater(end_time - start_time, 2)
-        self.assertLess(end_time - start_time, 4)
+        self.assertGreater(end_time - start_time, 1.5)
+        self.assertLess(end_time - start_time, 4.5)
+
+    def test_65_418(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/status/418'
+        self.inqueue.put(request)
+        task, result = self.outqueue.get()
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 418)
+        self.assertIn('teapot', response.text)
 
     def test_70_phantomjs_url(self):
         if not self.phantomjs:
             raise unittest.SkipTest('no phantomjs')
         request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin + '/get'
         request['fetch']['fetch_type'] = 'js'
         result = self.fetcher.sync_fetch(request)
-        self.assertEqual(result['status_code'], 200)
-        self.assertEqual(result['orig_url'], self.sample_task_http['url'])
-        self.assertEqual(result['save'], self.sample_task_http['fetch']['save'])
-        self.assertIn('content', result)
+        response = rebuild_response(result)
 
-        content = result['content']
-        self.assertIn('<b>a:</b>', content)
-        self.assertIn('<b>Cookie:</b>', content)
-        self.assertIn('c=d</td>', content)
+        self.assertEqual(response.status_code, 200, result)
+        self.assertEqual(response.orig_url, request['url'])
+        self.assertEqual(response.save, request['fetch']['save'])
+        data = json.loads(response.doc('pre').text())
+        self.assertIsNotNone(data, response.content)
+        self.assertEqual(data['headers'].get('A'), 'b', response.json)
+        self.assertEqual(data['headers'].get('Cookie'), 'c=d', response.json)
 
     def test_80_phantomjs_timeout(self):
         if not self.phantomjs:
             raise unittest.SkipTest('no phantomjs')
         request = copy.deepcopy(self.sample_task_http)
-        request['url'] = 'http://httpbin.org/delay/10'
+        request['url'] = self.httpbin+'/delay/5'
         request['fetch']['fetch_type'] = 'js'
         request['fetch']['timeout'] = 3
         start_time = time.time()
         result = self.fetcher.sync_fetch(request)
         end_time = time.time()
         self.assertGreater(end_time - start_time, 2)
-        self.assertLess(end_time - start_time, 4)
+        self.assertLess(end_time - start_time, 5)
 
     def test_90_phantomjs_js_script(self):
         if not self.phantomjs:
             raise unittest.SkipTest('no phantomjs')
         request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin + '/html'
         request['fetch']['fetch_type'] = 'js'
         request['fetch']['js_script'] = 'function() { document.write("binux") }'
         result = self.fetcher.sync_fetch(request)
@@ -193,9 +246,79 @@ class TestFetcher(unittest.TestCase):
         if not self.phantomjs:
             raise unittest.SkipTest('no phantomjs')
         request = copy.deepcopy(self.sample_task_http)
-        request['url'] = 'https://groups.google.com/forum/#!forum/pyspider-users'
+        request['url'] = self.httpbin+'/pyspider/ajax.html'
         request['fetch']['fetch_type'] = 'js'
-        request['fetch']['headers']['User-Agent'] = 'Mozilla/5.0'
+        request['fetch']['headers']['User-Agent'] = 'pyspider-test'
         result = self.fetcher.sync_fetch(request)
         self.assertEqual(result['status_code'], 200)
-        self.assertIn('pyspider-users', result['content'])
+        self.assertNotIn('loading', result['content'])
+        self.assertIn('done', result['content'])
+        self.assertIn('pyspider-test', result['content'])
+
+    def test_a110_dns_error(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = 'http://www.not-exists-site.com/'
+        result = self.fetcher.sync_fetch(request)
+        self.assertEqual(result['status_code'], 599)
+        self.assertIn('error', result)
+        self.assertIn('resolve', result['error'])
+
+        self.inqueue.put(request)
+        task, result = self.outqueue.get()
+        self.assertEqual(result['status_code'], 599)
+        self.assertIn('error', result)
+        self.assertIn('resolve', result['error'])
+
+    def test_a120_http_get_with_proxy_fail(self):
+        self.fetcher.proxy = self.proxy
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/get'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 403, result)
+        self.fetcher.proxy = None
+
+    def test_a130_http_get_with_proxy_ok(self):
+        self.fetcher.proxy = self.proxy
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/get?username=binux&password=123456'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, result)
+        self.assertEqual(response.orig_url, request['url'])
+        self.assertEqual(response.save, request['fetch']['save'])
+        self.assertIsNotNone(response.json, response.content)
+        self.assertEqual(response.json['headers'].get('A'), 'b', response.json)
+        self.assertIn('c=d', response.json['headers'].get('Cookie'), response.json)
+        self.assertIn('a=b', response.json['headers'].get('Cookie'), response.json)
+        self.fetcher.proxy = None
+
+    def test_a140_redirect(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/redirect-to?url=/get'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, result)
+        self.assertEqual(response.orig_url, request['url'])
+        self.assertEqual(response.url, self.httpbin+'/get')
+
+    def test_a150_too_much_redirect(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/redirect/10'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 599, result)
+        self.assertIn('redirects followed', response.error)
+
+    def test_a160_cookie(self):
+        request = copy.deepcopy(self.sample_task_http)
+        request['url'] = self.httpbin+'/cookies/set?k1=v1&k2=v2'
+        result = self.fetcher.sync_fetch(request)
+        response = rebuild_response(result)
+
+        self.assertEqual(response.status_code, 200, result)
+        self.assertEqual(response.cookies, {'a': 'b', 'k1': 'v1', 'k2': 'v2', 'c': 'd'}, result)

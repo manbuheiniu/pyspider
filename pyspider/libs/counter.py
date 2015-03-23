@@ -5,23 +5,56 @@
 #         http://binux.me
 # Created on 2012-11-14 17:09:50
 
+from __future__ import unicode_literals, division, absolute_import
+
 import time
-import cPickle
 import logging
 from collections import deque
-from UserDict import DictMixin
+try:
+    from UserDict import DictMixin
+except ImportError:
+    from collections import Mapping as DictMixin
+
+import six
+from six import iteritems
+from six.moves import cPickle
 
 
 class BaseCounter(object):
-    pass
+
+    def __init__(self):
+        raise NotImplementedError
+
+    def event(self, value=1):
+        """Fire a event."""
+        raise NotImplementedError
+
+    def value(self, value):
+        """Set counter value."""
+        raise NotImplementedError
+
+    @property
+    def avg(self):
+        """Get average value"""
+        raise NotImplementedError
+
+    @property
+    def sum(self):
+        """Get sum of counter"""
+        raise NotImplementedError
+
+    def empty(self):
+        """Clear counter"""
+        raise NotImplementedError
 
 
 class TotalCounter(BaseCounter):
+    """Total counter"""
 
     def __init__(self):
         self.cnt = 0
 
-    def event(self, value):
+    def event(self, value=1):
         self.cnt += value
 
     def value(self, value):
@@ -40,6 +73,9 @@ class TotalCounter(BaseCounter):
 
 
 class AverageWindowCounter(BaseCounter):
+    """
+    Record last N(window) value
+    """
 
     def __init__(self, window_size=300):
         self.window_size = window_size
@@ -52,7 +88,7 @@ class AverageWindowCounter(BaseCounter):
 
     @property
     def avg(self):
-        return float(self.sum) / len(self.values)
+        return self.sum / len(self.values)
 
     @property
     def sum(self):
@@ -64,6 +100,11 @@ class AverageWindowCounter(BaseCounter):
 
 
 class TimebaseAverageWindowCounter(BaseCounter):
+    """
+    Record last window_size * window_interval seconds values.
+
+    records will trim evert window_interval seconds
+    """
 
     def __init__(self, window_size=30, window_interval=10):
         self.max_window_size = window_size
@@ -136,6 +177,9 @@ class TimebaseAverageWindowCounter(BaseCounter):
 
 
 class CounterValue(DictMixin):
+    """
+    A dict like value item for CounterManager.
+    """
 
     def __init__(self, manager, keys):
         self.manager = manager
@@ -163,6 +207,15 @@ class CounterValue(DictMixin):
         else:
             return CounterValue(self.manager, key)
 
+    def __len__(self):
+        return len(self.keys())
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __contains__(self, key):
+        return key in self.keys()
+
     def keys(self):
         result = set()
         for key in self.manager.counters:
@@ -172,8 +225,9 @@ class CounterValue(DictMixin):
         return result
 
     def to_dict(self, get_value=None):
+        """Dump counters as a dict"""
         result = {}
-        for key, value in self.iteritems():
+        for key, value in iteritems(self):
             if isinstance(value, BaseCounter):
                 if get_value is not None:
                     value = getattr(value, get_value)
@@ -184,13 +238,24 @@ class CounterValue(DictMixin):
 
 
 class CounterManager(DictMixin):
+    """
+    A dict like counter manager.
+
+    When using a tuple as event key, say: ('foo', 'bar'), You can visite counter
+    with manager['foo']['bar'].  Or get all counters which first element is 'foo'
+    by manager['foo'].
+
+    It's useful for a group of counters.
+    """
 
     def __init__(self, cls=TimebaseAverageWindowCounter):
+        """init manager with Counter cls"""
         self.cls = cls
         self.counters = {}
 
     def event(self, key, value=1):
-        if isinstance(key, basestring):
+        """Fire a event of a counter by counter key"""
+        if isinstance(key, six.string_types):
             key = (key, )
         assert isinstance(key, tuple), "event key type error"
         if key not in self.counters:
@@ -199,7 +264,8 @@ class CounterManager(DictMixin):
         return self
 
     def value(self, key, value=1):
-        if isinstance(key, basestring):
+        """Set value of a counter by counter key"""
+        if isinstance(key, six.string_types):
             key = (key, )
         assert isinstance(key, tuple), "event key type error"
         if key not in self.counters:
@@ -208,7 +274,8 @@ class CounterManager(DictMixin):
         return self
 
     def trim(self):
-        for key, value in self.counters.items():
+        """Clear not used counters"""
+        for key, value in list(iteritems(self.counters)):
             if value.empty():
                 del self.counters[key]
 
@@ -229,6 +296,12 @@ class CounterManager(DictMixin):
         else:
             return CounterValue(self, key)
 
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __len__(self):
+        return len(self.keys())
+
     def keys(self):
         result = set()
         for key in self.counters:
@@ -236,9 +309,10 @@ class CounterManager(DictMixin):
         return result
 
     def to_dict(self, get_value=None):
+        """Dump counters as a dict"""
         self.trim()
         result = {}
-        for key, value in self.iteritems():
+        for key, value in iteritems(self):
             if isinstance(value, BaseCounter):
                 if get_value is not None:
                     value = getattr(value, get_value)
@@ -248,16 +322,20 @@ class CounterManager(DictMixin):
         return result
 
     def dump(self, filename):
+        """Dump counters to file"""
         try:
-            cPickle.dump(self.counters, open(filename, 'wb'))
+            with open(filename, 'wb') as fp:
+                cPickle.dump(self.counters, fp)
         except:
             logging.error("can't dump counter to file: %s" % filename)
             return False
         return True
 
     def load(self, filename):
+        """Load counters to file"""
         try:
-            self.counters = cPickle.load(open(filename))
+            with open(filename) as fp:
+                self.counters = cPickle.load(fp)
         except:
             logging.debug("can't load counter from file: %s" % filename)
             return False

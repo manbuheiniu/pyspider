@@ -10,7 +10,7 @@ import mysql.connector
 
 from pyspider.database.base.projectdb import ProjectDB as BaseProjectDB
 from pyspider.database.basedb import BaseDB
-from mysqlbase import MySQLMixin
+from .mysqlbase import MySQLMixin
 
 
 class ProjectDB(MySQLMixin, BaseProjectDB, BaseDB):
@@ -34,7 +34,7 @@ class ProjectDB(MySQLMixin, BaseProjectDB, BaseDB):
             `rate` float(11, 4),
             `burst` float(11, 4),
             `updatetime` double(16, 4)
-            ) ENGINE=MyISAM CHARSET=utf8''' % self.escape(self.__tablename__))
+            ) ENGINE=InnoDB CHARSET=utf8''' % self.escape(self.__tablename__))
 
     def insert(self, name, obj={}):
         obj = dict(obj)

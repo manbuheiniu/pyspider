@@ -23,34 +23,54 @@ class TestTaskQueue(unittest.TestCase):
         self.task_queue = TaskQueue()
         self.task_queue.rate = 100000
         self.task_queue.burst = 100000
-        self.task_queue.processing_timeout = 0.2
+        self.task_queue.processing_timeout = 0.5
 
-        self.task_queue.put('a3', 2, time.time() + 0.1)
+    def test_10_put(self):
+        self.task_queue.put('a3', 0, time.time() + 0.5)
+        self.task_queue.put('a4', 3, time.time() + 0.2)
+        self.task_queue.put('a2', 0)
         self.task_queue.put('a1', 1)
-        self.task_queue.put('a2', 3)
+        self.assertEqual(self.task_queue.size(), 4)
 
-    def test_1_priority_queue(self):
+    def test_20_update(self):
+        self.task_queue.put('a2', 4)
+        self.assertEqual(self.task_queue.size(), 4)
+        self.task_queue.put('a3', 2, 0)
+        self.assertEqual(self.task_queue.size(), 4)
+
+    def test_30_get_from_priority_queue(self):
         self.assertEqual(self.task_queue.get(), 'a2')
+        self.assertEqual(self.task_queue.size(), 4)
 
-    def test_2_time_queue(self):
-        time.sleep(0.1)
+    def test_40_time_queue_1(self):
         self.task_queue.check_update()
+        self.assertEqual(self.task_queue.get(), 'a3')
+        self.assertEqual(self.task_queue.size(), 4)
+
+    def test_50_time_queue_2(self):
+        time.sleep(0.3)
+        self.task_queue.check_update()
+        self.assertEqual(self.task_queue.get(), 'a4')
+        self.assertEqual(self.task_queue.get(), 'a1')
+        self.assertEqual(self.task_queue.size(), 4)
+
+    def test_60_processing_queue(self):
+        time.sleep(0.5)
+        self.task_queue.check_update()
+        self.assertEqual(self.task_queue.get(), 'a2')
+        self.assertEqual(len(self.task_queue), 4)
+        self.assertEqual(self.task_queue.get(), 'a4')
         self.assertEqual(self.task_queue.get(), 'a3')
         self.assertEqual(self.task_queue.get(), 'a1')
+        self.assertEqual(len(self.task_queue), 4)
 
-    def test_3_processing_queue(self):
-        time.sleep(0.1)
-        self.task_queue.check_update()
-        self.assertEqual(self.task_queue.get(), 'a2')
+    def test_70_done(self):
+        self.assertTrue(self.task_queue.done('a2'))
+        self.assertTrue(self.task_queue.done('a1'))
+        self.assertEqual(len(self.task_queue), 2)
+        self.assertTrue(self.task_queue.done('a4'))
+        self.assertTrue(self.task_queue.done('a3'))
         self.assertEqual(len(self.task_queue), 0)
-
-    def test_4_done(self):
-        self.task_queue.done('a2')
-        self.task_queue.done('a1')
-        time.sleep(0.1)
-        self.task_queue.check_update()
-        self.assertEqual(self.task_queue.get(), 'a3')
-        self.assertEqual(self.task_queue.get(), None)
 
 
 from pyspider.scheduler.token_bucket import Bucket
@@ -71,7 +91,10 @@ class TestBucket(unittest.TestCase):
         self.assertAlmostEqual(bucket.get(), 920, delta=2)
 
 
-import xmlrpclib
+try:
+    from six.moves import xmlrpc_client
+except ImportError:
+    import xmlrpclib as xmlrpc_client
 from multiprocessing import Queue
 from pyspider.scheduler.scheduler import Scheduler
 from pyspider.database.sqlite import taskdb, projectdb, resultdb
@@ -105,7 +128,7 @@ class TestScheduler(unittest.TestCase):
         self.newtask_queue = Queue(10)
         self.status_queue = Queue(10)
         self.scheduler2fetcher = Queue(10)
-        self.rpc = xmlrpclib.ServerProxy('http://localhost:%d' % self.scheduler_xmlrpc_port)
+        self.rpc = xmlrpc_client.ServerProxy('http://localhost:%d' % self.scheduler_xmlrpc_port)
 
         def run_scheduler():
             scheduler = Scheduler(taskdb=get_taskdb(), projectdb=get_projectdb(),
@@ -146,20 +169,21 @@ class TestScheduler(unittest.TestCase):
             'name': 'test_project',
             'group': 'group',
             'status': 'TODO',
-            'script': 'import time\nprint time.time()',
+            'script': 'import time\nprint(time.time())',
             'comments': 'test project',
             'rate': 1.0,
             'burst': 10,
         })
 
     def test_30_update_project(self):
-        import Queue
+        from six.moves import queue as Queue
         with self.assertRaises(Queue.Empty):
-            task = self.scheduler2fetcher.get(timeout=0.1)
+            task = self.scheduler2fetcher.get(timeout=1)
         self.projectdb.update('test_project', status="DEBUG")
+        time.sleep(0.1)
         self.rpc.update_project()
 
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertIsNotNone(task)
         self.assertEqual(task['url'], 'data:,_on_get_info')
 
@@ -179,14 +203,9 @@ class TestScheduler(unittest.TestCase):
                 'age': 0,
             },
         })
-        timeout = time.time() + 5
-        while self.rpc.size() != 1 and timeout > time.time():
-            time.sleep(0.1)
-        self.assertEqual(self.rpc.size(), 1)
-        self.assertEqual(self.rpc.counter('all', 'sum')['test_project']['pending'], 1)
 
         time.sleep(0.5)
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertGreater(len(self.rpc.get_active_tasks()), 0)
         self.assertIsNotNone(task)
         self.assertEqual(task['project'], 'test_project')
@@ -215,7 +234,7 @@ class TestScheduler(unittest.TestCase):
             'url': 'url'
         })
         time.sleep(0.1)
-        self.assertEqual(self.rpc.size(), 0)
+        self.assertEqual(self.rpc.size(), 1)
 
     def test_50_taskdone_error_no_track(self):
         self.status_queue.put({
@@ -224,7 +243,7 @@ class TestScheduler(unittest.TestCase):
             'url': 'url'
         })
         time.sleep(0.1)
-        self.assertEqual(self.rpc.size(), 0)
+        self.assertEqual(self.rpc.size(), 1)
         self.status_queue.put({
             'taskid': 'taskid',
             'project': 'test_project',
@@ -232,7 +251,7 @@ class TestScheduler(unittest.TestCase):
             'track': {}
         })
         time.sleep(0.1)
-        self.assertEqual(self.rpc.size(), 0)
+        self.assertEqual(self.rpc.size(), 1)
 
     def test_60_taskdone_failed_retry(self):
         self.status_queue.put({
@@ -248,7 +267,7 @@ class TestScheduler(unittest.TestCase):
                 },
             }
         })
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertIsNotNone(task)
 
     def test_70_taskdone_ok(self):
@@ -265,7 +284,7 @@ class TestScheduler(unittest.TestCase):
                 },
             }
         })
-        time.sleep(0.1)
+        time.sleep(0.2)
         self.assertEqual(self.rpc.size(), 0)
 
     def test_80_newtask_age_ignore(self):
@@ -321,7 +340,7 @@ class TestScheduler(unittest.TestCase):
                 'retries': 1
             },
         })
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertIsNotNone(task)
 
         self.test_70_taskdone_ok()
@@ -342,7 +361,7 @@ class TestScheduler(unittest.TestCase):
                 'retries': 1
             },
         })
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertIsNotNone(task)
 
     def test_a20_failed_retry(self):
@@ -359,7 +378,7 @@ class TestScheduler(unittest.TestCase):
                 },
             }
         })
-        task = self.scheduler2fetcher.get(timeout=5)
+        task = self.scheduler2fetcher.get(timeout=10)
         self.assertIsNotNone(task)
 
         self.status_queue.put({
@@ -371,18 +390,45 @@ class TestScheduler(unittest.TestCase):
                     'ok': False
                 },
                 'process': {
-                    'ok': True
+                    'ok': False
                 },
             }
         })
         time.sleep(0.2)
+
+    def test_a30_task_verify(self):
+        self.assertFalse(self.rpc.newtask({
+            #'taskid': 'taskid',
+            'project': 'test_project',
+            'url': 'url',
+        }))
+        self.assertFalse(self.rpc.newtask({
+            'taskid': 'taskid',
+            #'project': 'test_project',
+            'url': 'url',
+        }))
+        self.assertFalse(self.rpc.newtask({
+            'taskid': 'taskid',
+            'project': 'test_project',
+            #'url': 'url',
+        }))
+        self.assertFalse(self.rpc.newtask({
+            'taskid': 'taskid',
+            'project': 'not_exist_project',
+            'url': 'url',
+        }))
+        self.assertTrue(self.rpc.newtask({
+            'taskid': 'taskid',
+            'project': 'test_project',
+            'url': 'url',
+        }))
 
     def test_x10_inqueue_limit(self):
         self.projectdb.insert('test_inqueue_project', {
             'name': 'test_inqueue_project',
             'group': 'group',
             'status': 'DEBUG',
-            'script': 'import time\nprint time.time()',
+            'script': 'import time\nprint(time.time())',
             'comments': 'test project',
             'rate': 0,
             'burst': 0,
