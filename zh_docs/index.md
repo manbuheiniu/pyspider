@@ -1,18 +1,18 @@
 pyspider [![Build Status][Build Status]][Travis CI] [![Coverage Status][Coverage Status]][Coverage] [![Try][Try]][Demo]
 ========
 
-A Powerful Spider(Web Crawler) System in Python. **[TRY IT NOW!][Demo]**
+pyspider 是一个基于Python强大的爬虫框架. **[在线demo][Demo]**
 
-- Write script in python with powerful API
-- Python 2&3
-- Powerful WebUI with script editor, task monitor, project manager and result viewer
-- Javascript pages supported!
-- MySQL, MongoDB, SQLite, PostgreSQL as database backend 
-- Task priority, retry, periodical, recrawl by age and more
-- Distributed architecture
+- 基于Python强大的API接口开发爬虫代码。
+- 兼容Python 2和Python 3
+- 拥有强大的可视脚本编辑器，任务监控，项目管理和结果管理功能。
+- 支持Javascript动态生成的页面数据抓取!
+- 支持流行的数据库，如：MySQL, MongoDB, SQLite, PostgreSQL等 
+- 支持任务优先队列，重试，周期执行，过期执行等常用爬虫功能.
+- 支持分布式部署
 
 
-Sample Code 
+简单实例 
 -----------
 
 ```python
@@ -42,21 +42,21 @@ class Handler(BaseHandler):
 [![Demo][Demo Img]][Demo]
 
 
-Installation
+安装
 ------------
 
-* `pip install pyspider`
-* run command `pyspider`, visit [http://localhost:5000/](http://localhost:5000/)
+* 执行 `pip install pyspider` 安装pyspider.
+* 运行命令 `pyspider`启动pyspider, visit [http://localhost:5000/](http://localhost:5000/)
 
-Contribute
+如何参与及互动
 ----------
 
-* Use It
-* Open [Issue], send PR
-* [User Group]
+* 使用程序
+* 查看github的[Issue], 也可以发送 PR
+* 访问论坛[User Group]
 
 
-License
+授权协议
 -------
 Licensed under the Apache License, Version 2.0
 
