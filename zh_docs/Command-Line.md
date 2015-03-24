@@ -90,7 +90,7 @@ phantomjs代理地址。使用前你需要有一个phantomjs已经被安装并�
 SQLite数据库文件保存路径，默认是安装目录下的data目录。
 
 
-all
+简单模式（all）
 ---
 
 ```
@@ -157,7 +157,7 @@ quit_pyspider()
 
 在脚本互动模式中你可以使用 `pyspider.libs.utils.python_console()` 打开一个新的交互终端。
 
-bench
+压力测试（bench）
 -----
 
 ```
