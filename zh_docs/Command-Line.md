@@ -1,15 +1,15 @@
-Command Line
+命令行参数详解
 ============
 
-Global Config
+全局配置
 -------------
 
-You can get command help via `pyspider --help` and `pyspider all --help` for subcommand help.
+你可以通过输入`pyspider --help` 来获取帮助，也可以使用`pyspider all --help`获取子命令帮助。
 
-global options work for all subcommands.
+全局参数适用于所有子命令
 
 ```
-Usage: pyspider [OPTIONS] COMMAND [ARGS]...
+用法: pyspider [OPTIONS] COMMAND [ARGS]...
 
   A powerful spider system in python.
 
@@ -30,7 +30,7 @@ Options:
 
 #### --config
 
-Config file is a JSON file with config values for global options or subcommands (a sub-dict named after subcommand). [example](/Deployment/#configjson)
+配置文件为JSON格式，适用于配置全局参数和子命令的参数。 [example](/Deployment/#configjson)
 
 ``` json
 {
@@ -48,7 +48,7 @@ Config file is a JSON file with config values for global options or subcommands 
 
 #### --queue-maxsize
 
-Queue size limit, 0 for not limit
+任务队列长度限制,值为0时为不限制长度。
 
 #### --taskdb, --projectdb, --resultdb
 
@@ -79,24 +79,24 @@ type:
 
 #### --amqp-url
 
-See [https://www.rabbitmq.com/uri-spec.html](https://www.rabbitmq.com/uri-spec.html)
+队列服务 [https://www.rabbitmq.com/uri-spec.html](https://www.rabbitmq.com/uri-spec.html)
 
 #### --phantomjs-proxy
 
-The phantomjs proxy address, you need a phantomjs installed and running phantomjs proxy with command: [`pyspider phantomjs`](#phantomjs).
+phantomjs代理地址。使用前你需要有一个phantomjs已经被安装并且需要运行命令: [`pyspider phantomjs`](#phantomjs).
 
 #### --data-path
 
-SQLite database and counter dump files saved path
+SQLite数据库文件保存路径，默认是安装目录下的data目录。
 
 
 all
 ---
 
 ```
-Usage: pyspider all [OPTIONS]
+用法: pyspider all [OPTIONS]
 
-  Run all the components in subprocess or thread
+  在线程或进程中运行所有组件。
 
 Options:
   --fetcher-num INTEGER         instance num of fetcher
@@ -108,39 +108,38 @@ Options:
 ```
 
 
-one
+单用户模式（one）
 ---
 
 ```
-Usage: pyspider one [OPTIONS] [SCRIPTS]...
+用法: pyspider one [OPTIONS] [SCRIPTS]...
 
-  One mode not only means all-in-one, it runs every thing in one process
-  over tornado.ioloop, for debug purpose
+    单模式启动,所有的事件都在tornado.ioloop中运行，此模式常用于调试。
 
-Options:
+参数:
   -i, --interactive  enable interactive mode, you can choose crawl url.
   --phantomjs        enable phantomjs, will spawn a subprocess for phantomjs
   --help             Show this message and exit.
 ```
 
-**NOTE: WebUI is not running in one mode.**
+**注意: 单模式下web控制台不会启动。**
 
-In `one` mode, results will be written to stdout by default. You can capture them via `pyspider one > result.txt`.
+在单模式下爬取结果会输出到标准设备（终端）上，如果想保存输出结果请使用输出重定向命令 `pyspider one > result.txt`.
 
 #### [SCRIPTS]
 
-The script file path of projects. Project status is RUNNING, `rate` and `burst` can be set via script comments:
+项目的状态为RUNNING时，`rate` 和 `burst` 可以设置脚本的执行速度。
 
 ```
 # rate: 1.0
 # burst: 3
 ```
 
-When SCRIPTS is set, `taskdb` and `resultdb` will use a in-memory sqlite db by default (can be overridden by global config `--taskdb`, `--resultdb`). on_start callback will be triggered on start.
+当脚本设置好并启动后，`taskdb` 和 `resultdb` 默认使用内存数据库sqlite来保存数据 (当然你可以使用全局配置`--taskdb`, `--resultdb`修改这两个数据库的保存方法。). 当 on_start 执行时会自动启动sqlite数据库服务程序。
 
 #### -i, --interactive
 
-With interactive mode, pyspider will start an interactive console asking what to do in next loop of process. In the console, you can use:
+互动模式。互动模式将会启动一个交互的终端，每一次操作都需要用户输入命令或参数。在互动模式下你可以使用：
 
 ``` python
 crawl(url, project=None, **kwargs)
@@ -156,18 +155,17 @@ quit_pyspider()
     Close pyspider
 ```
 
-You can use `pyspider.libs.utils.python_console()` to open an interactive console in your script.
+在脚本互动模式中你可以使用 `pyspider.libs.utils.python_console()` 打开一个新的交互终端。
 
 bench
 -----
 
 ```
-Usage: pyspider bench [OPTIONS]
+用法: pyspider bench [OPTIONS]
 
-  Run Benchmark test. In bench mode, in-memory sqlite database is used
-  instead of on-disk sqlite database.
+  用来做压力测试。在测试过程中，pyspider会使用内存模式的sqlite，而不是硬盘下的sqlite。
 
-Options:
+参数:
   --fetcher-num INTEGER         instance num of fetcher
   --processor-num INTEGER       instance num of processor
   --result-worker-num INTEGER   instance num of result worker
@@ -179,15 +177,15 @@ Options:
 ```
 
 
-scheduler
+调度器（scheduler）
 ---------
 
 ```
-Usage: pyspider scheduler [OPTIONS]
+用法: pyspider scheduler [OPTIONS]
 
-  Run Scheduler, only one scheduler is allowed.
+  运行调度程序，不管什么部署方式只允许有一个调度器运行。
 
-Options:
+参数:
   --xmlrpc / --no-xmlrpc
   --xmlrpc-host TEXT
   --xmlrpc-port INTEGER
@@ -202,31 +200,31 @@ Options:
 
 #### --scheduler-cls
 
-set this option to use customized Scheduler class
+这个选项是使用自定义调度器类。
 
-phantomjs
+JS解析框架（phantomjs）
 ---------
 
 ```
-Usage: pyspider phantomjs [OPTIONS]
+用法: pyspider phantomjs [OPTIONS]
 
   Run phantomjs fetcher if phantomjs is installed.
 
-Options:
+参数:
   --phantomjs-path TEXT  phantomjs path
   --port INTEGER         phantomjs port
   --help                 Show this message and exit.
 ```
 
-fetcher
+任务抓取器（fetcher）
 -------
 
 ```
-Usage: pyspider fetcher [OPTIONS]
+用法: pyspider fetcher [OPTIONS]
 
   Run Fetcher.
 
-Options:
+参数:
   --xmlrpc / --no-xmlrpc
   --xmlrpc-host TEXT
   --xmlrpc-port INTEGER
@@ -240,45 +238,45 @@ Options:
 
 #### --proxy
 
-Default proxy used by fetcher, can been override by `self.crawl` option. [DOC](apis/self.crawl/#fetch)
+这个可以设置fetcher的代理服务器，优先级比`self.crawl`的选项低，可以被`self.crawl`选项中的代理配置覆盖。 [DOC](apis/self.crawl/#fetch)
 
 
-processor
+任务处理器（processor）
 ---------
 
 ```
-Usage: pyspider processor [OPTIONS]
+用法: pyspider processor [OPTIONS]
 
   Run Processor.
 
-Options:
+参数:
   --processor-cls TEXT  Processor class to be used.
   --help                Show this message and exit.
 ```
 
-result_worker
+结果处理器（result_worker）
 -------------
 
 ```
-Usage: pyspider result_worker [OPTIONS]
+用法: pyspider result_worker [OPTIONS]
 
   Run result worker.
 
-Options:
+参数:
   --result-cls TEXT  ResultWorker class to be used.
   --help             Show this message and exit.
 ```
 
 
-webui
+web控制台（webui）
 -----
 
 ```
-Usage: pyspider webui [OPTIONS]
+用法: pyspider webui [OPTIONS]
 
   Run WebUI
 
-Options:
+参数:
   --host TEXT            webui bind to host
   --port INTEGER         webui bind to host
   --cdn TEXT             js/css cdn server
@@ -295,12 +293,12 @@ Options:
 
 #### --cdn
 
-JS/CSS libs CDN service, URL must compatible with [cdnjs](https://cdnjs.com/)
+JS/CSS 库的CDN服务, URL必须兼容 [cdnjs](https://cdnjs.com/)
 
 #### --fercher-rpc
 
-XML-RPC path URI for fetcher XMLRPC server. If not set, use a Fetcher instance.
+XMLRPC服务器的路径，用于与调度器交互获取信息（多用于WEB控制台与调度器不在同一台服务器的情况）. 如果没有设置会使用本地地址。
 
 #### --need-auth
 
-If true, all pages require username and password specified via `--username` and `--password`.
+是否需要认证，如果为true，访问WEB控制平台时会要求用户输入账号和密码。账号和密码请使用 `--username` 和 `--password` 设置。
