@@ -57,6 +57,8 @@ class Scheduler(object):
         self._last_tick = int(time.time())
 
         self._cnt = {
+            "5m_time": counter.CounterManager(
+                lambda: counter.TimebaseAverageEventCounter(30, 10)),
             "5m": counter.CounterManager(
                 lambda: counter.TimebaseAverageWindowCounter(30, 10)),
             "1h": counter.CounterManager(
@@ -477,7 +479,10 @@ class Scheduler(object):
         server.register_function(self.__len__, 'size')
 
         def dump_counter(_time, _type):
-            return self._cnt[_time].to_dict(_type)
+            try:
+                return self._cnt[_time].to_dict(_type)
+            except:
+                logger.exception('')
         server.register_function(dump_counter, 'counter')
 
         def new_task(task):
@@ -610,6 +615,13 @@ class Scheduler(object):
             ret = self.on_task_done(task)
         else:
             ret = self.on_task_failed(task)
+
+        if task['track']['fetch'].get('time'):
+            self._cnt['5m_time'].event((task['project'], 'fetch_time'),
+                                       task['track']['fetch']['time'])
+        if task['track']['process'].get('time'):
+            self._cnt['5m_time'].event((task['project'], 'process_time'),
+                                       task['track']['process'].get('time'))
         self.projects[task['project']]['active_tasks'].appendleft((time.time(), task))
         return ret
 
@@ -793,6 +805,12 @@ class OneScheduler(Scheduler):
             ret = self.on_task_done(task)
         else:
             ret = self.on_task_failed(task)
+        if task['track']['fetch'].get('time'):
+            self._cnt['5m_time'].event((task['project'], 'fetch_time'),
+                                       task['track']['fetch']['time'])
+        if task['track']['process'].get('time'):
+            self._cnt['5m_time'].event((task['project'], 'process_time'),
+                                       task['track']['process'].get('time'))
         self.projects[task['project']]['active_tasks'].appendleft((time.time(), task))
         return ret
 

@@ -61,6 +61,8 @@ def connect_rpc(ctx, param, value):
 @click.group(invoke_without_command=True)
 @click.option('-c', '--config', callback=read_config, type=click.File('r'),
               help='a json file with default values for subcommands. {"webui": {"port":5001}}')
+@click.option('--logging-config', default=os.path.join(os.path.dirname(__file__), "logging.conf"),
+              help="logging config file for built-in python logging module", show_default=True)
 @click.option('--debug', envvar='DEBUG', default=False, is_flag=True, help='debug mode')
 @click.option('--queue-maxsize', envvar='QUEUE_MAXSIZE', default=100,
               help='maxsize of queue')
@@ -82,7 +84,7 @@ def cli(ctx, **kwargs):
     """
     A powerful spider system in python.
     """
-    logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"))
+    logging.config.fileConfig(kwargs['logging_config'])
 
     # get db from env
     for db in ('taskdb', 'projectdb', 'resultdb'):
@@ -135,9 +137,9 @@ def cli(ctx, **kwargs):
     elif kwargs.get('beanstalk'):
         from pyspider.libs.beanstalk import Queue
         for name in ('newtask_queue', 'status_queue', 'scheduler2fetcher',
-                    'fetcher2processor', 'processor2result'):
-            kwargs[name] = utils.Get(lambda name=name: Queue(name, host=kwargs.get('beanstalk'), 
-                                                            maxsize=kwargs['queue_maxsize']))
+                     'fetcher2processor', 'processor2result'):
+            kwargs[name] = utils.Get(lambda name=name: Queue(name, host=kwargs.get('beanstalk'),
+                                                             maxsize=kwargs['queue_maxsize']))
     else:
         from multiprocessing import Queue
         for name in ('newtask_queue', 'status_queue', 'scheduler2fetcher',
@@ -319,6 +321,11 @@ def webui(ctx, host, port, cdn, scheduler_rpc, fetcher_rpc, max_rate, max_burst,
     if password:
         app.config['webui_password'] = password
     app.config['need_auth'] = need_auth
+
+    # inject queues for webui
+    for name in ('newtask_queue', 'status_queue', 'scheduler2fetcher',
+                 'fetcher2processor', 'processor2result'):
+        app.config['queues'][name] = getattr(g, name, None)
 
     # fetcher rpc
     if isinstance(fetcher_rpc, six.string_types):
@@ -539,6 +546,7 @@ def bench(ctx, fetcher_num, processor_num, result_worker_num, run_in, total, sho
     logging.getLogger('processor').setLevel(logging.ERROR)
     logging.getLogger('result').setLevel(logging.ERROR)
     logging.getLogger('webui').setLevel(logging.ERROR)
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
     try:
         threads = []
