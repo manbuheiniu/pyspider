@@ -200,7 +200,7 @@ def utf8(string):
     elif isinstance(string, six.binary_type):
         return string
     else:
-        return unicode(string).encode('utf8')
+        return six.text_type(string).encode('utf8')
 
 
 def text(string, encoding='utf8'):
@@ -226,7 +226,7 @@ def pretty_unicode(string):
     try:
         return string.decode("utf8")
     except UnicodeDecodeError:
-        return string.decode('Latin-1').encode('unicode_escape')
+        return string.decode('Latin-1').encode('unicode_escape').decode("utf8")
 
 
 def unicode_string(string):
